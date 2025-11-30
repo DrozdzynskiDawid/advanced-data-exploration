@@ -1,0 +1,211 @@
+---
+title: "Projekt zaliczeniowy"
+author: "Dawid Drożdżyński 151867"
+date: "`r Sys.Date()`"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+## Streszczenie
+
+Celem niniejszego raportu jest analiza czynników wpływających na pojemność superkondensatorów oraz budowa modelu predykcyjnego. Zbiór danych wejściowych, liczący ponad 900 wierszy, poddano procesowi czyszczenia i transformacji. Wykonano w tym celu kodowanie zmiennych kategorialnych (Label Encoding) oraz uzupełnienie brakujących wartości. Przeprowadzono eksploracyjną analizę danych badając rozkłady i macierze korelacji. Na etapie modelowania wykorzystano algorytm drzew decyzyjnych do przewidywania pojemności. Raport kończy się oceną skuteczności modelu.
+
+# Wstęp
+Wylistowanie użytych bibliotek oraz ustawienie seeda dla powtarzalności wyników.
+```{r setup, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(patchwork)
+library(ggcorrplot)
+library(plotly)
+library(caret)
+library(rpart.plot)
+set.seed(23)
+```
+# Wczytywanie danych
+```{r read_data, cache=TRUE}
+data <- read.csv("data.csv")
+
+head(data)
+summary(data)
+```
+Jak można zauważyć dane nie są wyczyszczone. W wielu kolumnach występują wartości puste (NA). Zostaną one usunięte w kolejnym kroku.
+
+# Przygotowanie zbioru danych do analizy
+### Usunięcie kolumn, które nie niosą informacji
+```{r cleaning_data}
+useful_col_data <- data %>%
+  select(-Ref., -Limits.of.Potential.Window..V.)
+
+str(useful_col_data)
+```
+Kolumna z identyfikatorem publikacji została usunięta, ponieważ nie wniesie nic do analizy. Kolumna z oknem potencjału jest tak naprawdę duplikatem kolumn z początkiem i końcem tego zakresu, więc również została usunięta.
+
+### Kolumny z ciągami znaków
+```{r chr_cols}
+useful_col_data %>%
+  summarise(across(where(is.character), n_distinct))
+
+useful_col_data <- useful_col_data %>%
+  select(-Electrode.Configuration, -Electrolyte.Chemical.Formula)
+
+numeric_col_data <- useful_col_data %>%
+  mutate(Cell.Configuration..three.two.electrode.system. = case_when(
+    Cell.Configuration..three.two.electrode.system. == "" ~ 0,
+    Cell.Configuration..three.two.electrode.system. == "three-electrode system" ~ 1,
+    Cell.Configuration..three.two.electrode.system. == "two-electrode system" ~ 2
+  ))
+
+table(numeric_col_data$Cell.Configuration..three.two.electrode.system.)
+```
+Dwie kolumny z ciągami znaków zostały usunięte z powodu wystepowania zbyt wielu kategorii, co mogłoby rozmyć informację. Ostatnia z kolumn przechowująca informację o konfiguracji ogniwa została przekonwertowana na liczbową za pomocą podejścia Label Encoding zgodnie z poniższą tabelą:
+
+| Oryginalna wartość | Label Encoding
+| :--- | :---:
+| `""` (pusty) | **0**
+| `three-electrode system` | **1**
+| `two-electrode system` | **2**
+
+### Zastąpienie wartości pustych zerami
+```{r na_cleaning}
+cleaned_data <- numeric_col_data %>%
+  mutate(across(where(is.numeric), ~replace_na(as.numeric(.), 0)))
+```
+### Sprawdzenie, czy nie ma wartości pustych
+```{r na_summary}
+colSums(is.na(cleaned_data))
+```
+Wszystkie wartości puste zostały zastąpione zerami, aby umożliwić dalszą analizę. Uznano, że ich nie podano, więc są traktowane jako zera. Należy jednak zauważyć, że w wielu kolumnach wartości NA stanowiły większość co świadczy o tym, że zbiór danych nie został należycie przygotowany.
+
+# Podstawowe statystyki
+### Rozmiar danych oraz statystyki
+```{r basic_stats}
+nrow(cleaned_data)
+ncol(cleaned_data)
+str(cleaned_data)
+summary(cleaned_data)
+```
+### Analiza wartości atrybutów
+```{r histograms}
+for (c in colnames(cleaned_data)) {
+  if (is.numeric(cleaned_data[[c]])) {
+    plot <- ggplot(cleaned_data, aes(x = .data[[c]])) +
+      geom_density(fill = "lightblue", alpha = 0.7) +
+      ggtitle(paste("Wykres gęstości rozkładu wartości dla:", c))
+    
+    print(plot)
+  }
+  
+}
+
+```
+
+Dla każdej kolumny numerycznej został przedstawiony wykres gęstości rozkładu wartości. Wykresy gęstościowe niosą więcej informacji, ponieważ pokazują, w jakim przedziale skupia się większość wartości. Można zauważyć, że w wielu kolumnach pojawiło się wiele zer po wyczyszczeniu wartości NA.
+
+# Korelacja
+```{r corr, fig.height=15, fig.width=20}
+numeric_cols <- cleaned_data %>%
+  select(where(is.numeric))
+
+corr_matrix <- cor(numeric_cols, use = "pairwise.complete.obs")
+
+ggcorrplot(corr_matrix,
+           method = "square",
+           type = "lower",
+           lab = TRUE,
+           lab_size = 5)
+```
+
+```{r interactive_plot1}
+plot <- ggplot(cleaned_data, aes(x = Lower.Limit.of.Potential.Window..V., y = Upper.Limit.of.Potential.Window..V.)) + 
+  geom_point(color = "lightgreen", alpha = 0.7, size = 2) +
+  theme_minimal() +                                        
+  labs(title = "Relacja granic zakresu okna potencjału",
+       x = "Lower.Limit.of.Potential.Window..V.",                    
+       y = "Upper.Limit.of.Potential.Window..V.")
+
+ggplotly(plot)
+```
+
+Najwyższą korelację odnotowano pomiędzy dolnym a górnym limitem okna potencjałowego. Powyższy interaktywny wykres ilustruje, że wraz ze wzrostem dolnej granicy zakresu rośnie też górna.
+
+Korelacja jest również wysoka pomiędzy wielkością przedziału, a górną granicą zakresu stabilności. Jest to korelacja, której można było się spodziewać. Jeśli granice przedziału się przesuwają, to cały przedział również się zwiększa.
+
+Wysoka zależność na poziomie około 0.6 występuje także między Charge Transfer Resistance (Rct), czyli oporem transferu ładunku pomiędzy elektrodą a elektrolitem, a Equivalent Series Resistance (Rs), czyli całkowitym oporem wewnętrznym superkondensatora. Może to wynikać z tego, że opór między elektrodą a elektrolitem jest składową całkowitego oporu.
+
+Niższą, lecz zauważalną korelację w granicach wartości 0.4 można zaobserwować pomiędzy powierzchnią właściwą, a całkowitą objętością porów oraz wielkością okna potencjału. Wskazuje to, że struktura materiału ma znaczenie i wpływa na okno potencjału, jednak korelacja nie jest na tyle wysoka, aby twierdzić że jest to jedyny czynnik, który na to wpływa.
+
+```{r interactive_plot2}
+plot <- ggplot(cleaned_data, aes(x = C.at., y = O.at.)) + 
+  geom_point(color = "steelblue", alpha = 0.7, size = 2) +
+  theme_minimal() +                                        
+  labs(title = "Relacja węgiel vs tlen",
+       x = "Stężenie węgla (% at.)",                    
+       y = "Stężenie tlenu (% at.)")
+
+ggplotly(plot)
+```
+
+Niska wartość korelacji występuje także pomiędzy procentami atomów węgla, azotu i tlenu. Przykładowo jak widać na powyższym wykresie, występuje zależność im więcej atomów węgla, tym mniej tlenu.
+
+Ciekawą obserwacją jest także korelacja pomiędzy procentem atomów węgla a wielkością okna, w którym materiał pozostaje stabilny. Wynosi ona 0.33, a dla atomów tlenu i azotu jest równa bądź bliska zeru. Sugeruje to, że występowanie atomów węgla może mieć jakiś wpływ na potencjał superkondensatora.
+
+# Uczenie maszynowe
+### Predykcja za pomocą drzewa decyzyjnego
+```{r machine_learning}
+data_for_model <- cleaned_data
+
+train_index <- createDataPartition(data_for_model$Capacitance..F.g., p = 0.7, list = FALSE)
+train_set <- data_for_model[train_index, ]
+test_set  <- data_for_model[-train_index, ]
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+tree_model_caret <- train(Capacitance..F.g. ~ .,
+                          data = train_set, 
+                          method = "rpart", 
+                          trControl = ctrl,
+                          tuneLength = 10)
+
+predictions <- predict(tree_model_caret, test_set)
+```
+
+### Rysunek wygenerowanego drzewa 
+```{r expaination}
+rpart.plot(tree_model_caret$finalModel, 
+           type = 2,
+           extra = 101,
+           fallen.leaves = TRUE,
+           box.palette = "BuGn",
+           shadow.col = "gray",
+           main = "Drzewo decyzyjne: Przewidywanie pojemności superkondensatora")
+```
+
+# Wyniki
+```{r errors_plot}
+plot_data <- data.frame(
+  Observed = test_set$Capacitance..F.g.,
+  Predicted = predictions
+)
+
+plot <- ggplot(plot_data, aes(x = Observed, y = Predicted)) +
+  geom_point(color = "blue", alpha = 0.6) +
+  labs(title = "Wartości rzeczywiste vs przewidywane",
+       x = "Rzeczywista pojemność",
+       y = "Przewidywana pojemność") +
+  theme_minimal()
+
+ggplotly(plot)
+
+summary(test_set$Capacitance..F.g.)
+results <- postResample(pred = predictions, obs = test_set$Capacitance)
+print(results)
+mean_capacitance <- mean(test_set$Capacitance..F.g., na.rm = TRUE)
+# MAE = 207.5
+error_percentage <- (207.5 / mean_capacitance) * 100
+error_percentage
+```
