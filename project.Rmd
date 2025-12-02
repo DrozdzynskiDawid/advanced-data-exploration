@@ -3,9 +3,9 @@ title: "Projekt zaliczeniowy"
 author: "Dawid Drożdżyński 151867"
 date: "`r Sys.Date()`"
 output: 
-  html_document:
-    toc: true
-    toc_float: true
+  rmdformats::readthedown:
+    toc_depth: 3
+    highlight: kate
 ---
 
 ## Streszczenie
@@ -16,9 +16,11 @@ Celem niniejszego raportu jest analiza czynników wpływających na pojemność 
 Wylistowanie użytych bibliotek oraz ustawienie seeda dla powtarzalności wyników.
 ```{r setup, warning=FALSE, message=FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+library(rmdformats)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
+library(ggsci)
 library(patchwork)
 library(ggcorrplot)
 library(plotly)
@@ -53,14 +55,22 @@ useful_col_data %>%
 useful_col_data <- useful_col_data %>%
   select(-Electrode.Configuration, -Electrolyte.Chemical.Formula)
 
+ggplot(data = useful_col_data, aes(x = Cell.Configuration..three.two.electrode.system., fill = Cell.Configuration..three.two.electrode.system.)) +
+  geom_bar(alpha = 0.8) +
+  scale_fill_futurama(labels = c("Brak informacji", "three-electrode system", "two-electrode system")) +
+  theme_minimal() +
+  labs(title = "Liczebność poszczególnych konfiguracji elektrod",
+       y = "Liczba wystąpień",
+       x = "",
+       fill = "System elektrod") +
+  theme(axis.text.x = element_blank())
+
 numeric_col_data <- useful_col_data %>%
   mutate(Cell.Configuration..three.two.electrode.system. = case_when(
     Cell.Configuration..three.two.electrode.system. == "" ~ 0,
     Cell.Configuration..three.two.electrode.system. == "three-electrode system" ~ 1,
     Cell.Configuration..three.two.electrode.system. == "two-electrode system" ~ 2
   ))
-
-table(numeric_col_data$Cell.Configuration..three.two.electrode.system.)
 ```
 Dwie kolumny z ciągami znaków zostały usunięte z powodu wystepowania zbyt wielu kategorii, co mogłoby rozmyć informację. Ostatnia z kolumn przechowująca informację o konfiguracji ogniwa została przekonwertowana na liczbową za pomocą podejścia Label Encoding zgodnie z poniższą tabelą:
 
@@ -92,7 +102,7 @@ summary(cleaned_data)
 ### Analiza wartości atrybutów
 ```{r histograms}
 for (c in colnames(cleaned_data)) {
-  if (is.numeric(cleaned_data[[c]])) {
+  if (is.numeric(cleaned_data[[c]]) && c != "Cell.Configuration..three.two.electrode.system.") {
     plot <- ggplot(cleaned_data, aes(x = .data[[c]])) +
       geom_density(fill = "lightblue", alpha = 0.7) +
       ggtitle(paste("Wykres gęstości rozkładu wartości dla:", c))
@@ -123,6 +133,7 @@ ggcorrplot(corr_matrix,
 ```{r interactive_plot1}
 plot <- ggplot(cleaned_data, aes(x = Lower.Limit.of.Potential.Window..V., y = Upper.Limit.of.Potential.Window..V.)) + 
   geom_point(color = "lightgreen", alpha = 0.7, size = 2) +
+  scale_color_tron() +
   theme_minimal() +                                        
   labs(title = "Relacja granic zakresu okna potencjału",
        x = "Lower.Limit.of.Potential.Window..V.",                    
