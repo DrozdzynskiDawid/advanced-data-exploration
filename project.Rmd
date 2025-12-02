@@ -26,6 +26,7 @@ library(ggcorrplot)
 library(plotly)
 library(caret)
 library(rpart.plot)
+library(randomForest)
 set.seed(23)
 ```
 # Wczytywanie danych
@@ -183,10 +184,11 @@ tree_model_caret <- train(Capacitance..F.g. ~ .,
                           tuneLength = 10)
 
 predictions <- predict(tree_model_caret, test_set)
+postResample(pred = predictions, obs = test_set$Capacitance)
 ```
 
 ### Rysunek wygenerowanego drzewa 
-```{r expaination}
+```{r explanation}
 rpart.plot(tree_model_caret$finalModel, 
            type = 2,
            extra = 101,
@@ -196,16 +198,38 @@ rpart.plot(tree_model_caret$finalModel,
            main = "Drzewo decyzyjne: Przewidywanie pojemności superkondensatora")
 ```
 
+### Predykcja z użyciem random forest
+```{r random_forest}
+data_for_model <- cleaned_data
+
+train_index <- createDataPartition(data_for_model$Capacitance..F.g., p = 0.7, list = FALSE)
+train_set <- data_for_model[train_index, ]
+test_set  <- data_for_model[-train_index, ]
+
+ctrl <- trainControl(method = "cv", number = 10)
+
+rf_model_caret <- train(Capacitance..F.g. ~ .,
+                          data = train_set, 
+                          method = "rf",
+                          trControl = ctrl,
+                          tuneLength = 5,
+                          ntree = 100)
+
+predictions_rf <- predict(rf_model_caret, test_set)
+
+postResample(pred = predictions_rf, obs = test_set$Capacitance..F.g.)
+```
+
 # Wyniki
 ```{r errors_plot}
 plot_data <- data.frame(
   Observed = test_set$Capacitance..F.g.,
-  Predicted = predictions
+  Predicted = predictions_rf
 )
 
 plot <- ggplot(plot_data, aes(x = Observed, y = Predicted)) +
   geom_point(color = "blue", alpha = 0.6) +
-  labs(title = "Wartości rzeczywiste vs przewidywane",
+  labs(title = "Wartości rzeczywiste vs przewidywane przez algorytm random forest",
        x = "Rzeczywista pojemność",
        y = "Przewidywana pojemność") +
   theme_minimal()
@@ -213,10 +237,14 @@ plot <- ggplot(plot_data, aes(x = Observed, y = Predicted)) +
 ggplotly(plot)
 
 summary(test_set$Capacitance..F.g.)
-results <- postResample(pred = predictions, obs = test_set$Capacitance)
-print(results)
 mean_capacitance <- mean(test_set$Capacitance..F.g., na.rm = TRUE)
-# MAE = 207.5
-error_percentage <- (207.5 / mean_capacitance) * 100
-error_percentage
+# MAE = 125.1
+error_percentage <- (125.1 / mean_capacitance) * 100
+cat("Średni błąd wynosi: ", error_percentage, "%")
 ```
+
+# Wnioski
+- Zbiór danych okazał się trudny do wstępnego przetworzenia z powodu występowania wielu wartości NA.
+- W zbiorze nie ma bardzo silnie skorelowanych ze sobą zmiennych.
+- Wyniki predykcji z użyciem pojedynczego drzewa decyzyjnego nie są zadowalające.
+- Zastosowanie lasu decyzyjnego znacząco poprawiło wyniki przewidywania pojemności.
