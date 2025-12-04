@@ -4,13 +4,13 @@ author: "Dawid Drożdżyński 151867"
 date: "`r Sys.Date()`"
 output: 
   rmdformats::readthedown:
-    toc_depth: 3
+    toc_depth: 1
     highlight: kate
 ---
 
 ## Streszczenie
 
-Celem niniejszego raportu jest analiza czynników wpływających na pojemność superkondensatorów oraz budowa modelu predykcyjnego. Zbiór danych wejściowych, liczący ponad 900 wierszy, poddano procesowi czyszczenia i transformacji. Wykonano w tym celu kodowanie zmiennych kategorialnych (Label Encoding) oraz uzupełnienie brakujących wartości. Przeprowadzono eksploracyjną analizę danych badając rozkłady i macierze korelacji. Na etapie modelowania wykorzystano algorytm drzew decyzyjnych do przewidywania pojemności. Raport kończy się oceną skuteczności modelu.
+Celem niniejszego raportu jest analiza czynników wpływających na pojemność superkondensatorów oraz budowa modelu predykcyjnego. Zbiór danych wejściowych, liczący ponad 900 wierszy, poddano procesowi czyszczenia i transformacji. Wykonano w tym celu kodowanie zmiennych kategorialnych (Label Encoding) oraz uzupełnienie brakujących wartości. Przeprowadzono eksploracyjną analizę danych badając rozkłady i macierze korelacji. NWykorzystano algorytmy drzew decyzyjnych oraz lasu losowego do przewidywania pojemności. Raport kończy się oceną skuteczności modeli.
 
 # Wstęp
 Wylistowanie użytych bibliotek oraz ustawienie seeda dla powtarzalności wyników.
@@ -81,18 +81,25 @@ Dwie kolumny z ciągami znaków zostały usunięte z powodu wystepowania zbyt wi
 | `three-electrode system` | **1**
 | `two-electrode system` | **2**
 
+### Podsumowanie procenta wartości NA w kolumnach
+```{r na_summary}
+numeric_col_data %>%
+  summarise(across(everything(), ~ mean(is.na(.)) * 100))
+```
+Jak można zauważyć powyżej, niektóre kolumny zawierają ponad 80% wartości NA, co oznacza że zbiór jest źle przygotowany.
+
 ### Zastąpienie wartości pustych zerami
 ```{r na_cleaning}
 cleaned_data <- numeric_col_data %>%
   mutate(across(where(is.numeric), ~replace_na(as.numeric(.), 0)))
 ```
 ### Sprawdzenie, czy nie ma wartości pustych
-```{r na_summary}
+```{r na_check}
 colSums(is.na(cleaned_data))
 ```
 Wszystkie wartości puste zostały zastąpione zerami, aby umożliwić dalszą analizę. Uznano, że ich nie podano, więc są traktowane jako zera. Należy jednak zauważyć, że w wielu kolumnach wartości NA stanowiły większość co świadczy o tym, że zbiór danych nie został należycie przygotowany.
 
-# Podstawowe statystyki
+# Podstawowe informacje o zbiorze danych
 ### Rozmiar danych oraz statystyki
 ```{r basic_stats}
 nrow(cleaned_data)
@@ -181,6 +188,7 @@ tree_model_caret <- train(Capacitance..F.g. ~ .,
                           data = train_set, 
                           method = "rpart", 
                           trControl = ctrl,
+                          preProcess = c("center", "scale"),
                           tuneLength = 10)
 
 predictions <- predict(tree_model_caret, test_set)
@@ -212,6 +220,7 @@ rf_model_caret <- train(Capacitance..F.g. ~ .,
                           data = train_set, 
                           method = "rf",
                           trControl = ctrl,
+                          preProcess = c("center", "scale"),
                           tuneLength = 5,
                           ntree = 100)
 
@@ -238,8 +247,8 @@ ggplotly(plot)
 
 summary(test_set$Capacitance..F.g.)
 mean_capacitance <- mean(test_set$Capacitance..F.g., na.rm = TRUE)
-# MAE = 125.1
-error_percentage <- (125.1 / mean_capacitance) * 100
+# MAE = 124.7
+error_percentage <- (124.7 / mean_capacitance) * 100
 cat("Średni błąd wynosi: ", error_percentage, "%")
 ```
 
@@ -247,4 +256,4 @@ cat("Średni błąd wynosi: ", error_percentage, "%")
 - Zbiór danych okazał się trudny do wstępnego przetworzenia z powodu występowania wielu wartości NA.
 - W zbiorze nie ma bardzo silnie skorelowanych ze sobą zmiennych.
 - Wyniki predykcji z użyciem pojedynczego drzewa decyzyjnego nie są zadowalające.
-- Zastosowanie lasu decyzyjnego znacząco poprawiło wyniki przewidywania pojemności.
+- Zastosowanie lasu decyzyjnego znacząco poprawia wyniki przewidywania pojemności.
