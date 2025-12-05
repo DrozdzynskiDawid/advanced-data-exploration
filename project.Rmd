@@ -10,7 +10,7 @@ output:
 
 ## Streszczenie
 
-Celem niniejszego raportu jest analiza czynników wpływających na pojemność superkondensatorów oraz budowa modelu predykcyjnego. Zbiór danych wejściowych, liczący ponad 900 wierszy, poddano procesowi czyszczenia i transformacji. Wykonano w tym celu kodowanie zmiennych kategorialnych (Label Encoding) oraz uzupełnienie brakujących wartości. Przeprowadzono eksploracyjną analizę danych badając rozkłady i macierze korelacji. NWykorzystano algorytmy drzew decyzyjnych oraz lasu losowego do przewidywania pojemności. Raport kończy się oceną skuteczności modeli.
+Celem niniejszego raportu jest analiza czynników wpływających na pojemność superkondensatorów oraz budowa modelu predykcyjnego. Zbiór danych wejściowych, liczący ponad 900 wierszy, poddano procesowi czyszczenia i transformacji. Wykonano w tym celu kodowanie zmiennych kategorialnych (Label Encoding) oraz uzupełnienie brakujących wartości. Przeprowadzono eksploracyjną analizę danych badając rozkłady gęstościowe wartości. Przeprowadzono również analizę korelacji pomiędzy atrybutami. Wykorzystano algorytmy drzew decyzyjnych oraz lasu losowego do przewidywania pojemności. Raport kończy się oceną skuteczności modeli.
 
 # Wstęp
 Wylistowanie użytych bibliotek oraz ustawienie seeda dla powtarzalności wyników.
@@ -86,7 +86,7 @@ Dwie kolumny z ciągami znaków zostały usunięte z powodu wystepowania zbyt wi
 numeric_col_data %>%
   summarise(across(everything(), ~ mean(is.na(.)) * 100))
 ```
-Jak można zauważyć powyżej, niektóre kolumny zawierają ponad 80% wartości NA, co oznacza że zbiór jest źle przygotowany.
+Zidentyfikowano bardzo wysoki poziom braków danych (>80%) w wielu atrybutach, co negatywnie świadczy o jakości i kompletności pozyskanego zbioru.
 
 ### Zastąpienie wartości pustych zerami
 ```{r na_cleaning}
@@ -97,7 +97,7 @@ cleaned_data <- numeric_col_data %>%
 ```{r na_check}
 colSums(is.na(cleaned_data))
 ```
-Wszystkie wartości puste zostały zastąpione zerami, aby umożliwić dalszą analizę. Uznano, że ich nie podano, więc są traktowane jako zera. Należy jednak zauważyć, że w wielu kolumnach wartości NA stanowiły większość co świadczy o tym, że zbiór danych nie został należycie przygotowany.
+Wszystkie wartości puste zostały zastąpione zerami, aby umożliwić dalszą analizę. Uznano, że ich nie podano, więc są traktowane jako zera. Należy jednak zauważyć, że w wielu kolumnach wartości NA stanowiły większość co świadczy o tym, że zbiór danych nie został należycie przygotowany. Nie zdecydowano się jednak na całkowite usuwanie kolumn, ze względu na to, że zostałoby ich bardzo mało do dalszej analizy, a być może wartości wypełnione niosą jakąś informację.
 
 # Podstawowe informacje o zbiorze danych
 ### Rozmiar danych oraz statystyki
@@ -122,7 +122,7 @@ for (c in colnames(cleaned_data)) {
 
 ```
 
-Dla każdej kolumny numerycznej został przedstawiony wykres gęstości rozkładu wartości. Wykresy gęstościowe niosą więcej informacji, ponieważ pokazują, w jakim przedziale skupia się większość wartości. Można zauważyć, że w wielu kolumnach pojawiło się wiele zer po wyczyszczeniu wartości NA.
+Dla każdej kolumny numerycznej został przedstawiony wykres gęstości rozkładu wartości. Wykresy gęstościowe niosą więcej informacji dla analityka, ponieważ pokazują, w jakim przedziale skupia się większość wartości. Można zauważyć, że w wielu kolumnach pojawiło się wiele zer po wyczyszczeniu wartości NA.
 
 # Korelacja
 ```{r corr, fig.height=15, fig.width=20}
